@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# -----------------------------
+# IMPORT ROUTERS
+# -----------------------------
 from app.database import init_db
 from app.auth_routes import router as auth_router
 from app.mood import router as mood_router
@@ -10,19 +13,14 @@ from app.reports import router as reports_router
 from app.privacy import router as privacy_router
 
 
+# -----------------------------
+# CREATE FASTAPI APP
+# -----------------------------
 app = FastAPI(
     title="WellNest AI",
-    description="AI Mental Health Companion Backend",
-    version="1.0"
+    description="AI powered mental wellness assistant",
+    version="1.0.0"
 )
-
-
-# -----------------------------
-# STARTUP EVENT
-# -----------------------------
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
 
 
 # -----------------------------
@@ -41,6 +39,9 @@ app.add_middleware(
         "http://127.0.0.1:5175",
         "http://127.0.0.1:5176",
         "http://127.0.0.1:5177",
+
+        # Vercel frontend
+        "https://welnest-ai-five.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -49,19 +50,30 @@ app.add_middleware(
 
 
 # -----------------------------
-# TEST ROUTE
+# DATABASE INITIALIZATION
+# -----------------------------
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
+
+# -----------------------------
+# INCLUDE ROUTES
+# -----------------------------
+app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+app.include_router(mood_router, prefix="/mood", tags=["Mood Tracking"])
+app.include_router(journal_router, prefix="/journal", tags=["Journal"])
+app.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
+app.include_router(reports_router, prefix="/reports", tags=["Reports"])
+app.include_router(privacy_router, prefix="/privacy", tags=["Privacy"])
+
+
+# -----------------------------
+# ROOT ENDPOINT
 # -----------------------------
 @app.get("/")
 async def root():
-    return {"message": "WellNest API Running"}
-
-
-# -----------------------------
-# ROUTERS
-# -----------------------------
-app.include_router(auth_router)
-app.include_router(mood_router)
-app.include_router(journal_router)
-app.include_router(analytics_router)
-app.include_router(reports_router)
-app.include_router(privacy_router)
+    return {
+        "message": "WellNest AI Backend Running",
+        "status": "ok"
+    }
