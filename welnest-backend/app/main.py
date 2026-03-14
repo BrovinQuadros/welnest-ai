@@ -29,20 +29,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://localhost:5176",
-        "http://localhost:5177",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-        "http://127.0.0.1:5176",
-        "http://127.0.0.1:5177",
-
-        # Vercel frontend
+        # Primary deployed frontend
         "https://welnest-ai-five.vercel.app",
     ],
+    # Allow local Vite dev servers on any port and Vercel preview deployments.
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$|https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,11 +52,11 @@ async def startup_event():
 # INCLUDE ROUTES
 # -----------------------------
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
-app.include_router(mood_router, prefix="/mood", tags=["Mood Tracking"])
-app.include_router(journal_router, prefix="/journal", tags=["Journal"])
-app.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
-app.include_router(reports_router, prefix="/reports", tags=["Reports"])
-app.include_router(privacy_router, prefix="/privacy", tags=["Privacy"])
+app.include_router(mood_router, tags=["Mood Tracking"])
+app.include_router(journal_router, tags=["Journal"])
+app.include_router(analytics_router, tags=["Analytics"])
+app.include_router(reports_router, tags=["Reports"])
+app.include_router(privacy_router, tags=["Privacy"])
 
 
 # -----------------------------

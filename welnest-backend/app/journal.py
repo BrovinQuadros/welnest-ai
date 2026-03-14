@@ -8,7 +8,7 @@ from datetime import datetime
 router = APIRouter(prefix="/journal", tags=["Journal"])
 
 
-@router.post("/", response_model=JournalOut)
+@router.post("", response_model=JournalOut)
 async def create_journal(
     journal: JournalCreate,
     user: str = Depends(get_current_user)

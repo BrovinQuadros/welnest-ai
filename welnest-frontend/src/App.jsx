@@ -13,7 +13,10 @@ import { Bar } from "react-chartjs-2";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const BACKEND_URL = "https://welnest-ai.onrender.com";
+const BACKEND_URL = import.meta.env.DEV
+  ? ""
+  : import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") ||
+    "https://welnest-ai.onrender.com";
 
 const NAV_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: "🏠" },
@@ -156,7 +159,7 @@ function App() {
       loadDashboard();
     } catch (err) {
       console.error("Login error:", err);
-      alert("Unable to connect to server. Please check backend is running on port 8000.");
+      alert("Unable to connect to backend server.");
     }
   };
 
@@ -190,7 +193,7 @@ function App() {
       setIsRegister(false);
     } catch (err) {
       console.error("Register error:", err);
-      alert("Unable to connect to server. Please check backend is running on port 8000.");
+      alert("Unable to connect to backend server.");
     }
   };
 

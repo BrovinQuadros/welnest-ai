@@ -2,9 +2,11 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 # 🔐 Security settings
 SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret_key")

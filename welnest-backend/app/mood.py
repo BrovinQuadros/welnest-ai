@@ -39,7 +39,7 @@ class MoodResponse(BaseModel):
 # =========================================================
 
 @router.post(
-    "/",
+    "",
     response_model=MoodResponse,
     status_code=status.HTTP_201_CREATED
 )
@@ -72,7 +72,7 @@ async def log_mood(
 # =========================================================
 
 @router.get(
-    "/",
+    "",
     response_model=List[MoodOut]
 )
 async def get_moods(

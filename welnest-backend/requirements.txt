@@ -10,3 +10,4 @@ reportlab
 matplotlib
 pandas
 python-dotenv
+certifi

@@ -1,9 +1,16 @@
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
+from pathlib import Path
 from dotenv import load_dotenv
+import certifi
+from motor.motor_asyncio import AsyncIOMotorClient
+
+# Force PyMongo to use Python's built-in SSL instead of pyOpenSSL
+# (avoids compatibility issues with some OpenSSL/pyOpenSSL builds on Windows)
+os.environ.setdefault("PYMONGO_DISABLE_PYOPENSSL", "1")
 
 # Load environment variables
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 # =====================================================
@@ -11,8 +18,31 @@ load_dotenv()
 # =====================================================
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 
+
+def _build_mongo_client() -> AsyncIOMotorClient:
+    """
+    Build MongoDB client with safe defaults for both local and cloud setups.
+
+    - Local mongodb://localhost typically does NOT use TLS.
+    - Atlas / mongodb+srv usually requires TLS and CA certs.
+    """
+    url = (MONGO_URL or "").strip()
+    lowered = url.lower()
+
+    use_tls_ca = (
+        lowered.startswith("mongodb+srv://")
+        or "tls=true" in lowered
+        or "ssl=true" in lowered
+    )
+
+    client_kwargs = {}
+    if use_tls_ca:
+        client_kwargs["tlsCAFile"] = certifi.where()
+
+    return AsyncIOMotorClient(url, **client_kwargs)
+
 # Create MongoDB async client
-client = AsyncIOMotorClient(MONGO_URL)
+client = _build_mongo_client()
 
 
 # =====================================================
