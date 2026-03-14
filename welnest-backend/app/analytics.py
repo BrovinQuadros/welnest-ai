@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List
 from datetime import datetime, timedelta
-from app.database import get_db
+from app.database import moods_collection
 from app.auth_dependencies import get_current_user
 from app.ai_service import summarize_text
 
@@ -41,38 +41,37 @@ class WeeklyInsightResponse(BaseModel):
 # =====================================================
 
 @router.get("/mood-trends", response_model=MoodTrendsResponse)
-def mood_trends(current_user: str = Depends(get_current_user)):
-
-    db = get_db()
-    cursor = db.cursor()
+async def mood_trends(current_user: str = Depends(get_current_user)):
 
     try:
-        cursor.execute(
-            """
-            SELECT DATE(created_at), AVG(mood_score)
-            FROM moods
-            WHERE username = ?
-            GROUP BY DATE(created_at)
-            ORDER BY DATE(created_at)
-            """,
-            (current_user,)
-        )
+        moods = await moods_collection.find({"username": current_user}).to_list(1000)
 
-        rows = cursor.fetchall()
-
-        if not rows:
+        if not moods:
             return {"labels": [], "values": []}
 
+        daily = {}
+
+        for m in moods:
+            date = m["created_at"].strftime("%Y-%m-%d")
+
+            if date not in daily:
+                daily[date] = []
+
+            daily[date].append(m["mood_score"])
+
+        labels = sorted(daily.keys())
+        values = [
+            round(sum(daily[d]) / len(daily[d]), 2)
+            for d in labels
+        ]
+
         return {
-            "labels": [row[0] for row in rows],
-            "values": [round(row[1], 2) for row in rows]
+            "labels": labels,
+            "values": values
         }
 
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to fetch mood trends")
-
-    finally:
-        db.close()
 
 
 # =====================================================
@@ -80,27 +79,12 @@ def mood_trends(current_user: str = Depends(get_current_user)):
 # =====================================================
 
 @router.get("/summary", response_model=MoodSummaryResponse)
-def mood_summary(current_user: str = Depends(get_current_user)):
-
-    db = get_db()
-    cursor = db.cursor()
+async def mood_summary(current_user: str = Depends(get_current_user)):
 
     try:
-        cursor.execute(
-            """
-            SELECT AVG(mood_score),
-                   MIN(mood_score),
-                   MAX(mood_score),
-                   COUNT(*)
-            FROM moods
-            WHERE username = ?
-            """,
-            (current_user,)
-        )
+        moods = await moods_collection.find({"username": current_user}).to_list(1000)
 
-        result = cursor.fetchone()
-
-        if not result or result[3] == 0:
+        if not moods:
             return {
                 "average": 0,
                 "minimum": 0,
@@ -108,18 +92,17 @@ def mood_summary(current_user: str = Depends(get_current_user)):
                 "total_entries": 0
             }
 
+        scores = [m["mood_score"] for m in moods]
+
         return {
-            "average": round(result[0], 2),
-            "minimum": result[1],
-            "maximum": result[2],
-            "total_entries": result[3]
+            "average": round(sum(scores) / len(scores), 2),
+            "minimum": min(scores),
+            "maximum": max(scores),
+            "total_entries": len(scores)
         }
 
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to fetch mood summary")
-
-    finally:
-        db.close()
 
 
 # =====================================================
@@ -127,31 +110,18 @@ def mood_summary(current_user: str = Depends(get_current_user)):
 # =====================================================
 
 @router.get("/streak", response_model=MoodStreakResponse)
-def mood_streak(current_user: str = Depends(get_current_user)):
-
-    db = get_db()
-    cursor = db.cursor()
+async def mood_streak(current_user: str = Depends(get_current_user)):
 
     try:
-        cursor.execute(
-            """
-            SELECT DISTINCT DATE(created_at)
-            FROM moods
-            WHERE username = ?
-            ORDER BY DATE(created_at) DESC
-            """,
-            (current_user,)
-        )
+        moods = await moods_collection.find({"username": current_user}).to_list(1000)
 
-        rows = cursor.fetchall()
-
-        if not rows:
+        if not moods:
             return {"streak": 0}
 
-        dates = [
-            datetime.strptime(row[0], "%Y-%m-%d").date()
-            for row in rows
-        ]
+        dates = sorted(
+            {m["created_at"].date() for m in moods},
+            reverse=True
+        )
 
         streak = 0
         today = datetime.today().date()
@@ -174,42 +144,30 @@ def mood_streak(current_user: str = Depends(get_current_user)):
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to calculate streak")
 
-    finally:
-        db.close()
-
 
 # =====================================================
 # WEEKLY AI INSIGHT
 # =====================================================
 
 @router.get("/weekly-ai-insight", response_model=WeeklyInsightResponse)
-def weekly_ai_insight(current_user: str = Depends(get_current_user)):
-
-    db = get_db()
-    cursor = db.cursor()
+async def weekly_ai_insight(current_user: str = Depends(get_current_user)):
 
     try:
-        seven_days_ago = datetime.now() - timedelta(days=7)
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
 
-        cursor.execute(
-            """
-            SELECT AVG(mood_score)
-            FROM moods
-            WHERE username = ?
-            AND created_at >= ?
-            """,
-            (current_user, seven_days_ago)
-        )
+        moods = await moods_collection.find({
+            "username": current_user,
+            "created_at": {"$gte": seven_days_ago}
+        }).to_list(1000)
 
-        result = cursor.fetchone()
-
-        if not result or result[0] is None:
+        if not moods:
             return {
                 "weekly_average": 0,
                 "insight": "Not enough data for weekly insight."
             }
 
-        weekly_avg = round(result[0], 2)
+        scores = [m["mood_score"] for m in moods]
+        weekly_avg = round(sum(scores) / len(scores), 2)
 
         prompt = (
             f"The user's average mood this week is {weekly_avg} out of 10. "
@@ -225,6 +183,3 @@ def weekly_ai_insight(current_user: str = Depends(get_current_user)):
 
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to generate weekly AI insight")
-
-    finally:
-        db.close()

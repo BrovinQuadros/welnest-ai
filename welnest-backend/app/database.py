@@ -1,61 +1,61 @@
-# app/database.py
+from motor.motor_asyncio import AsyncIOMotorClient
+import os
+from dotenv import load_dotenv
 
-import sqlite3
-from pathlib import Path
-
-# 📌 Absolute path to project root
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-# 📌 Single source of truth for DB
-DB_PATH = BASE_DIR / "welnest.db"
+# Load environment variables
+load_dotenv()
 
 
-def get_db():
+# =====================================================
+# MONGODB CONNECTION
+# =====================================================
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+
+# Create MongoDB async client
+client = AsyncIOMotorClient(MONGO_URL)
+
+
+# =====================================================
+# DATABASE
+# =====================================================
+database = client["welnest_db"]
+
+
+# =====================================================
+# COLLECTIONS
+# =====================================================
+users_collection = database["users"]
+moods_collection = database["moods"]
+journals_collection = database["journals"]
+analytics_collection = database["analytics"]
+reports_collection = database["reports"]
+report_shares_collection = database["report_shares"]
+
+
+# =====================================================
+# INITIALIZE DATABASE INDEXES
+# =====================================================
+async def init_db():
     """
-    Returns a SQLite connection.
+    Initialize MongoDB indexes.
+    Collections are created automatically when data is inserted.
     """
-    print("✅ FASTAPI USING DB:", DB_PATH)
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
+    # Unique username
+    await users_collection.create_index("username", unique=True)
 
-def init_db():
-    """
-    Initializes all database tables.
-    This MUST be called once at app startup.
-    """
-    db = get_db()
-    cursor = db.cursor()
+    # Index for faster queries
+    await moods_collection.create_index([("username", 1)])
+    await journals_collection.create_index([("username", 1)])
+    await analytics_collection.create_index([("username", 1)])
+    await reports_collection.create_index([("username", 1)])
+    await report_shares_collection.create_index([("username", 1)])
 
-    # ---------------- USERS TABLE ----------------
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    # Index for analytics sorting
+    await moods_collection.create_index([("created_at", 1)])
+    await journals_collection.create_index([("created_at", 1)])
+    await analytics_collection.create_index([("created_at", 1)])
+    await reports_collection.create_index([("created_at", 1)])
+    await report_shares_collection.create_index([("shared_at", 1)])
 
-    # ---------------- MOODS TABLE ----------------
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS moods (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            mood_score INTEGER NOT NULL,
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    # ---------------- JOURNALS TABLE ----------------
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS journals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    db.commit()
-    db.close()
+    print("✅ MongoDB connected successfully")

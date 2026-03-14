@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from app.database import get_db
+from datetime import datetime
+
+from app.database import moods_collection
 from app.auth_dependencies import get_current_user
 
 router = APIRouter(
@@ -41,33 +43,26 @@ class MoodResponse(BaseModel):
     response_model=MoodResponse,
     status_code=status.HTTP_201_CREATED
 )
-def log_mood(
+async def log_mood(
     mood: MoodCreate,
     current_user: str = Depends(get_current_user)
 ):
-    db = get_db()
-    cursor = db.cursor()
 
     try:
-        cursor.execute(
-            """
-            INSERT INTO moods (username, mood_score, notes)
-            VALUES (?, ?, ?)
-            """,
-            (current_user, mood.mood_score, mood.notes)
-        )
+        mood_data = {
+            "username": current_user,
+            "mood_score": mood.mood_score,
+            "notes": mood.notes,
+            "created_at": datetime.utcnow()
+        }
 
-        db.commit()
+        await moods_collection.insert_one(mood_data)
 
     except Exception:
-        db.rollback()
         raise HTTPException(
             status_code=500,
             detail="Failed to log mood"
         )
-
-    finally:
-        db.close()
 
     return {"message": "Mood logged successfully"}
 
@@ -80,24 +75,14 @@ def log_mood(
     "/",
     response_model=List[MoodOut]
 )
-def get_moods(
+async def get_moods(
     current_user: str = Depends(get_current_user)
 ):
-    db = get_db()
-    cursor = db.cursor()
 
     try:
-        cursor.execute(
-            """
-            SELECT mood_score, notes, created_at
-            FROM moods
-            WHERE username = ?
-            ORDER BY created_at DESC
-            """,
-            (current_user,)
-        )
-
-        rows = cursor.fetchall()
+        moods = await moods_collection.find(
+            {"username": current_user}
+        ).sort("created_at", -1).to_list(1000)
 
     except Exception:
         raise HTTPException(
@@ -105,14 +90,11 @@ def get_moods(
             detail="Failed to fetch moods"
         )
 
-    finally:
-        db.close()
-
     return [
         MoodOut(
-            mood_score=row[0],
-            notes=row[1],
-            created_at=row[2]
+            mood_score=m["mood_score"],
+            notes=m.get("notes"),
+            created_at=m["created_at"].isoformat()
         )
-        for row in rows
+        for m in moods
     ]

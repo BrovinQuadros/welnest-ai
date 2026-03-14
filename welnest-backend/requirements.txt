@@ -1,8 +1,11 @@
 fastapi
 uvicorn
 pymongo
+motor
 python-jose
 passlib[bcrypt]
+python-multipart
 openai
 reportlab
+matplotlib
 pandas

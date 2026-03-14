@@ -2,26 +2,28 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# Load environment variables from backend root
+# Load environment variables
 load_dotenv()
 
-# Read variables
+# Read API configuration
 api_key = os.getenv("NVIDIA_API_KEY")
 base_url = os.getenv("NVIDIA_BASE_URL")
 
 print("NVIDIA_API_KEY Loaded:", bool(api_key))
 print("NVIDIA_BASE_URL:", base_url)
 
-# If API key missing, do NOT crash backend
-if not api_key:
-    print("⚠️ WARNING: NVIDIA_API_KEY not found. AI disabled.")
-    client = None
-else:
+# Initialize AI client safely
+client = None
+if api_key:
     client = OpenAI(
         api_key=api_key,
         base_url=base_url
     )
+else:
+    print("⚠️ WARNING: NVIDIA_API_KEY not found. AI disabled.")
 
+
+# System prompt for the AI
 SYSTEM_PROMPT = (
     "You are WellNest AI, a supportive mental health companion. "
     "Respond empathetically and briefly. "
@@ -31,11 +33,11 @@ SYSTEM_PROMPT = (
 
 def summarize_text(text: str) -> str:
     """
-    Calls NVIDIA/OpenAI model.
-    Always returns safe string.
+    Generate an AI response for journal entries.
+    Always returns a safe string.
     """
 
-    # If API not configured
+    # If AI not configured
     if client is None:
         return "AI service is not configured properly."
 
@@ -53,7 +55,7 @@ def summarize_text(text: str) -> str:
             temperature=0.7
         )
 
-        if completion.choices and len(completion.choices) > 0:
+        if completion.choices:
             return completion.choices[0].message.content.strip()
 
         return "Thank you for sharing. I’m here to support you."
@@ -64,4 +66,5 @@ def summarize_text(text: str) -> str:
         print(repr(e))
         traceback.print_exc()
         print("================================")
-        return "AI service failed"
+
+        return "AI service temporarily unavailable."

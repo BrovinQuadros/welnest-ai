@@ -44,7 +44,6 @@ class MoodOut(BaseModel):
 # JOURNAL MODELS
 # =========================
 
-
 class JournalCreate(BaseModel):
     content: str
 
@@ -70,4 +69,12 @@ class AnalyticsResponse(BaseModel):
 
 class MoodTrendsResponse(BaseModel):
     labels: List[str]
-    values: List[int]
+    values: List[float]
+
+
+# =========================
+# PRIVACY / REPORT SHARING MODELS
+# =========================
+
+class ShareReportRequest(BaseModel):
+    provider_email: str

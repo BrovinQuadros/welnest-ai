@@ -1,101 +1,86 @@
-from fastapi import APIRouter, Depends
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from app.database import get_db
+
 from app.auth_dependencies import get_current_user
+from app.database import report_shares_collection
+from app.models import ShareReportRequest
+from app.services.report_generator import (
+    generate_csv_report,
+    generate_pdf_report,
+    get_report_status,
+)
 
-import csv
-from pathlib import Path
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
 
-router = APIRouter(prefix="/report", tags=["Reports"])
+router = APIRouter(tags=["Reports"])
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-REPORT_DIR = BASE_DIR / "reports"
-REPORT_DIR.mkdir(exist_ok=True)
 
-# ---------- CSV EXPORT (MOODS) ----------
-@router.get("/csv")
-def export_mood_csv(current_user: str = Depends(get_current_user)):
-    db = get_db()
-    cursor = db.cursor()
+@router.get("/api/report/status")
+async def report_status(current_user: str = Depends(get_current_user)):
+    return await get_report_status(current_user)
 
-    cursor.execute(
-        """
-        SELECT mood_score, notes, created_at
-        FROM moods
-        WHERE username = ?
-        ORDER BY created_at
-        """,
-        (current_user,)
-    )
 
-    rows = cursor.fetchall()
-    db.close()
-
-    file_path = REPORT_DIR / f"{current_user}_mood_report.csv"
-
-    with open(file_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Mood Score", "Notes", "Date"])
-        writer.writerows(rows)
+# ============================================================
+# CSV EXPORT - WELLNESS DATA
+# New endpoint + backward compatibility endpoint
+# ============================================================
+@router.get("/api/report/csv")
+@router.get("/export/csv")
+async def export_wellness_csv(current_user: str = Depends(get_current_user)):
+    try:
+        file_path = await generate_csv_report(current_user)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to generate CSV report")
 
     return FileResponse(
         path=file_path,
         filename=file_path.name,
-        media_type="text/csv"
+        media_type="text/csv",
     )
 
 
-# ---------- PDF EXPORT (JOURNAL) ----------
-@router.get("/pdf")
-def export_journal_pdf(current_user: str = Depends(get_current_user)):
-    db = get_db()
-    cursor = db.cursor()
+# ============================================================
+# PDF EXPORT - WELLNESS REPORT
+# New endpoint + backward compatibility endpoint
+# ============================================================
+@router.get("/api/report/pdf")
+@router.get("/export/pdf")
+async def export_wellness_pdf(current_user: str = Depends(get_current_user)):
+    status = await get_report_status(current_user)
+    if not status.get("has_journal_data"):
+        raise HTTPException(status_code=404, detail="No journal data found")
 
-    cursor.execute(
-        """
-        SELECT content, created_at
-        FROM journals
-        WHERE username = ?
-        ORDER BY created_at
-        """,
-        (current_user,)
-    )
-
-    rows = cursor.fetchall()
-    db.close()
-
-    file_path = REPORT_DIR / f"{current_user}_journal_report.pdf"
-
-    c = canvas.Canvas(str(file_path), pagesize=A4)
-    width, height = A4
-    y = height - 40
-
-    c.setFont("Helvetica", 11)
-    c.drawString(40, y, f"Journal Report for {current_user}")
-    y -= 30
-
-    for content, created_at in rows:
-        if y < 80:
-            c.showPage()
-            c.setFont("Helvetica", 11)
-            y = height - 40
-
-        c.drawString(40, y, f"Date: {created_at}")
-        y -= 15
-
-        text = c.beginText(40, y)
-        for line in content.split("\n"):
-            text.textLine(line)
-            y -= 14
-        c.drawText(text)
-        y -= 20
-
-    c.save()
+    try:
+        file_path = await generate_pdf_report(current_user)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to generate PDF report")
 
     return FileResponse(
         path=file_path,
         filename=file_path.name,
-        media_type="application/pdf"
+        media_type="application/pdf",
     )
+
+
+@router.post("/api/report/share")
+async def share_wellness_report(
+    payload: ShareReportRequest,
+    current_user: str = Depends(get_current_user)
+):
+    try:
+        report_path = await generate_pdf_report(current_user)
+
+        await report_shares_collection.insert_one(
+            {
+                "username": current_user,
+                "provider_email": payload.provider_email,
+                "report_file": report_path.name,
+                "shared_at": datetime.utcnow(),
+                "status": "simulated_sent",
+            }
+        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to share report")
+
+    return {"message": "Report shared successfully"}
