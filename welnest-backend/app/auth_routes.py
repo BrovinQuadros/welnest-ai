@@ -5,7 +5,7 @@ from app.auth_utils import hash_password, verify_password, create_access_token
 from app.models import RegisterRequest
 from datetime import datetime
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(tags=["Auth"])
 
 
 # ---------------- REGISTER ----------------
