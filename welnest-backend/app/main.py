@@ -30,6 +30,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         # Primary deployed frontend
+        "https://wellnest-ba120me9u-brovinquadros-projects.vercel.app",
         "https://welnest-ai-five.vercel.app",
     ],
     # Allow local Vite dev servers on any port and Vercel preview deployments.
