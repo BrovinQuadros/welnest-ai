@@ -13,7 +13,7 @@ import { Bar } from "react-chartjs-2";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const BACKEND_URL = "http://127.0.0.1:8000";
+const BACKEND_URL = "https://welnest-ai.onrender.com";
 
 const NAV_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: "🏠" },
