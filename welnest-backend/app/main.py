@@ -41,7 +41,7 @@ app.add_middleware(
         "http://127.0.0.1:5177",
 
         # Vercel frontend
-        "https://wellnest-ai-five.vercel.app",
+        "https://welnest-ai-five.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
