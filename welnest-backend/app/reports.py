@@ -77,6 +77,12 @@ async def share_wellness_report(
         raise HTTPException(status_code=400, detail="Provider email is required")
 
     try:
+        logger.info(
+            "Share report requested | user=%s provider_email=%s",
+            current_user,
+            provider_email,
+        )
+
         report_path = await generate_pdf_report(current_user)
 
         email_subject = f"WellNest Wellness Report - {current_user}"
@@ -101,6 +107,13 @@ async def share_wellness_report(
             attachment_path=report_path,
         )
 
+        logger.info(
+            "Share report email sent successfully | user=%s provider_email=%s provider=%s",
+            current_user,
+            provider_email,
+            send_result.get("provider"),
+        )
+
         await report_shares_collection.insert_one(
             {
                 "username": current_user,
@@ -111,6 +124,8 @@ async def share_wellness_report(
                 "email_provider": send_result.get("provider"),
             }
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Failed to share report for user '%s'", current_user)
         raise HTTPException(
