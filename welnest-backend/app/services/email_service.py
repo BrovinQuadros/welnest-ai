@@ -2,11 +2,16 @@ import base64
 import logging
 import os
 import smtplib
+import ssl
 from email.message import EmailMessage
 from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
+
+
+def _has_smtp_credentials() -> bool:
+    return bool(os.getenv("SMTP_USERNAME") and os.getenv("SMTP_PASSWORD"))
 
 
 def _build_message(
@@ -49,9 +54,11 @@ def _send_via_smtp(
 ) -> dict:
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_timeout = int(os.getenv("SMTP_TIMEOUT", "30"))
     smtp_username = os.getenv("SMTP_USERNAME")
     smtp_password = os.getenv("SMTP_PASSWORD")
     from_email = os.getenv("EMAIL_FROM") or smtp_username
+    smtp_debug = os.getenv("SMTP_DEBUG", "0").strip() == "1"
 
     if not smtp_username or not smtp_password:
         raise RuntimeError(
@@ -63,11 +70,12 @@ def _send_via_smtp(
         raise RuntimeError("Missing sender email. Set EMAIL_FROM or SMTP_USERNAME.")
 
     logger.info(
-        "Email attempt via SMTP | host=%s port=%s from=%s to=%s",
+        "Email attempt via SMTP | host=%s port=%s from=%s to=%s username_present=%s",
         smtp_host,
         smtp_port,
         from_email,
         to_email,
+        bool(smtp_username),
     )
 
     message = _build_message(
@@ -79,12 +87,17 @@ def _send_via_smtp(
         attachment_path=attachment_path,
     )
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as server:
+        if smtp_debug:
+            server.set_debuglevel(1)
         server.ehlo()
-        server.starttls()
+        server.starttls(context=ssl.create_default_context())
         server.ehlo()
         server.login(smtp_username, smtp_password)
-        server.send_message(message)
+        send_failures = server.send_message(message)
+
+    if send_failures:
+        raise RuntimeError(f"SMTP recipient failures: {send_failures}")
 
     logger.info("Email delivered via SMTP to %s", to_email)
     return {"provider": "smtp", "to": to_email, "status": "sent"}
@@ -158,17 +171,32 @@ def send_email(
     - EMAIL_PROVIDER=auto (default): Resend if RESEND_API_KEY exists, otherwise SMTP
     """
     email_provider = os.getenv("EMAIL_PROVIDER", "auto").strip().lower()
+    has_resend_key = bool(os.getenv("RESEND_API_KEY"))
+    has_smtp_creds = _has_smtp_credentials()
 
     logger.info(
-        "Preparing email send | provider=%s to=%s subject=%s attachment=%s",
+        "Preparing email send | provider=%s to=%s subject=%s attachment=%s has_resend_key=%s has_smtp_creds=%s",
         email_provider,
         to_email,
         subject,
         str(attachment_path) if attachment_path else "none",
+        has_resend_key,
+        has_smtp_creds,
     )
 
     try:
         if email_provider == "resend":
+            if not has_resend_key and has_smtp_creds:
+                logger.warning(
+                    "EMAIL_PROVIDER=resend but RESEND_API_KEY missing. Falling back to SMTP."
+                )
+                return _send_via_smtp(
+                    to_email=to_email,
+                    subject=subject,
+                    text_body=text_body,
+                    html_body=html_body,
+                    attachment_path=attachment_path,
+                )
             return _send_via_resend(
                 to_email=to_email,
                 subject=subject,
@@ -178,6 +206,17 @@ def send_email(
             )
 
         if email_provider == "smtp":
+            if not has_smtp_creds and has_resend_key:
+                logger.warning(
+                    "EMAIL_PROVIDER=smtp but SMTP credentials missing. Falling back to Resend."
+                )
+                return _send_via_resend(
+                    to_email=to_email,
+                    subject=subject,
+                    text_body=text_body,
+                    html_body=html_body,
+                    attachment_path=attachment_path,
+                )
             return _send_via_smtp(
                 to_email=to_email,
                 subject=subject,
@@ -186,13 +225,25 @@ def send_email(
                 attachment_path=attachment_path,
             )
 
-        if os.getenv("RESEND_API_KEY"):
+        if email_provider not in {"auto", "smtp", "resend"}:
+            logger.warning(
+                "Unknown EMAIL_PROVIDER value '%s'. Using auto selection.",
+                email_provider,
+            )
+
+        if has_resend_key:
             return _send_via_resend(
                 to_email=to_email,
                 subject=subject,
                 text_body=text_body,
                 html_body=html_body,
                 attachment_path=attachment_path,
+            )
+
+        if not has_smtp_creds:
+            raise RuntimeError(
+                "No valid email provider configuration found. "
+                "Set RESEND_API_KEY (+ EMAIL_FROM) or SMTP_USERNAME/SMTP_PASSWORD (+ EMAIL_FROM)."
             )
 
         return _send_via_smtp(
