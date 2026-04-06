@@ -87,6 +87,29 @@ function App() {
   const [journal, setJournal] = useState("");
   const [response, setResponse] = useState("");
 
+  const validateAuthInput = (rawUsername, rawPassword) => {
+    const normalizedUsername = rawUsername.trim().toLowerCase();
+    const usernamePattern = /^[a-z0-9_.-]+$/;
+
+    if (!normalizedUsername || !rawPassword) {
+      return { ok: false, message: "Enter username and password" };
+    }
+
+    if (normalizedUsername.length < 3 || normalizedUsername.length > 32) {
+      return { ok: false, message: "Username must be 3-32 characters" };
+    }
+
+    if (!usernamePattern.test(normalizedUsername)) {
+      return { ok: false, message: "Username can only contain letters, numbers, ., _, -" };
+    }
+
+    if (rawPassword.length < 8 || rawPassword.length > 128) {
+      return { ok: false, message: "Password must be 8-128 characters" };
+    }
+
+    return { ok: true, username: normalizedUsername };
+  };
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good morning";
@@ -125,7 +148,9 @@ function App() {
   /* ================= LOGIN ================= */
 
   const login = async () => {
-    if (!username || !password) return alert("Enter username and password");
+    const validation = validateAuthInput(username, password);
+    if (!validation.ok) return alert(validation.message);
+    const normalizedUsername = validation.username;
 
     try {
       const res = await fetch(`${BACKEND_URL}/auth/login`, {
@@ -134,7 +159,7 @@ function App() {
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({
-          username,
+          username: normalizedUsername,
           password,
         }),
       });
@@ -153,7 +178,8 @@ function App() {
       }
 
       localStorage.setItem("token", data.access_token);
-      localStorage.setItem("username", username);
+      localStorage.setItem("username", normalizedUsername);
+      setUsername(normalizedUsername);
 
       setIsLoggedIn(true);
       loadDashboard();
@@ -166,7 +192,9 @@ function App() {
   /* ================= REGISTER ================= */
 
   const register = async () => {
-    if (!username || !password) return alert("Enter username and password");
+    const validation = validateAuthInput(username, password);
+    if (!validation.ok) return alert(validation.message);
+    const normalizedUsername = validation.username;
 
     try {
       const res = await fetch(`${BACKEND_URL}/auth/register`, {
@@ -175,7 +203,7 @@ function App() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          username,
+          username: normalizedUsername,
           password,
         }),
       });
@@ -310,8 +338,15 @@ function App() {
   /* ================= PRIVACY CONTROLS ================= */
 
   const shareReportWithProvider = async () => {
-    if (!providerEmail.trim()) {
+    const normalizedEmail = providerEmail.trim().toLowerCase();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!normalizedEmail) {
       return alert("Please enter provider email");
+    }
+
+    if (!emailPattern.test(normalizedEmail)) {
+      return alert("Please enter a valid provider email");
     }
 
     setPrivacyActionLoading(true);
@@ -321,7 +356,7 @@ function App() {
       const res = await authFetch(`${BACKEND_URL}/api/report/share`, {
         method: "POST",
         body: JSON.stringify({
-          provider_email: providerEmail.trim(),
+          provider_email: normalizedEmail,
         }),
       });
 
@@ -332,7 +367,11 @@ function App() {
         return;
       }
 
-      setPrivacyMessage(data?.message || "Report shared successfully");
+      setPrivacyMessage(
+        data?.provider_email
+          ? `Report shared successfully with ${data.provider_email}`
+          : data?.message || "Report shared successfully"
+      );
       setProviderEmail("");
     } catch (err) {
       console.error(err);

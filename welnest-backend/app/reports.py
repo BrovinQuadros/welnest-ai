@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -14,6 +15,7 @@ from app.services.report_generator import (
 
 
 router = APIRouter(tags=["Reports"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/api/report/status")
@@ -68,19 +70,28 @@ async def share_wellness_report(
     payload: ShareReportRequest,
     current_user: str = Depends(get_current_user)
 ):
+    provider_email = payload.provider_email.strip().lower()
+
+    if not provider_email:
+        raise HTTPException(status_code=400, detail="Provider email is required")
+
     try:
         report_path = await generate_pdf_report(current_user)
 
         await report_shares_collection.insert_one(
             {
                 "username": current_user,
-                "provider_email": payload.provider_email,
+                "provider_email": provider_email,
                 "report_file": report_path.name,
                 "shared_at": datetime.utcnow(),
                 "status": "simulated_sent",
             }
         )
     except Exception:
+        logger.exception("Failed to share report for user '%s'", current_user)
         raise HTTPException(status_code=500, detail="Failed to share report")
 
-    return {"message": "Report shared successfully"}
+    return {
+        "message": "Report shared successfully",
+        "provider_email": provider_email,
+    }

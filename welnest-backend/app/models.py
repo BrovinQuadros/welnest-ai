@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -8,13 +8,28 @@ from datetime import datetime
 # =========================
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(
+        ...,
+        min_length=3,
+        max_length=32,
+        pattern=r"^[A-Za-z0-9_.-]+$",
+        description="3-32 chars, letters/numbers/._- only"
+    )
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+class RegisterResponse(BaseModel):
+    message: str
     username: str
-    password: str
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(..., min_length=3, max_length=32)
+    password: str = Field(..., min_length=8, max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -77,4 +92,9 @@ class MoodTrendsResponse(BaseModel):
 # =========================
 
 class ShareReportRequest(BaseModel):
-    provider_email: str
+    provider_email: str = Field(
+        ...,
+        min_length=5,
+        max_length=254,
+        pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$"
+    )

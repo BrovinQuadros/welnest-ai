@@ -3,6 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
+import logging
 
 # Force PyMongo to use Python's built-in SSL instead of pyOpenSSL
 # (avoids compatibility issues with some OpenSSL/pyOpenSSL builds on Windows)
@@ -11,12 +12,17 @@ os.environ.setdefault("PYMONGO_DISABLE_PYOPENSSL", "1")
 # Load environment variables
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+logger = logging.getLogger(__name__)
 
 
 # =====================================================
 # MONGODB CONNECTION
 # =====================================================
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+
+if not MONGO_URL:
+    logger.warning("MONGO_URL is empty. Falling back to mongodb://localhost:27017")
+    MONGO_URL = "mongodb://localhost:27017"
 
 
 def _build_mongo_client() -> AsyncIOMotorClient:
@@ -35,7 +41,9 @@ def _build_mongo_client() -> AsyncIOMotorClient:
         or "ssl=true" in lowered
     )
 
-    client_kwargs = {}
+    client_kwargs = {
+        "serverSelectionTimeoutMS": int(os.getenv("MONGO_SERVER_SELECTION_TIMEOUT_MS", "10000"))
+    }
     if use_tls_ca:
         client_kwargs["tlsCAFile"] = certifi.where()
 
@@ -71,6 +79,9 @@ async def init_db():
     Collections are created automatically when data is inserted.
     """
 
+    # Verify connectivity early (helps fail-fast on bad Render env configuration).
+    await client.admin.command("ping")
+
     # Unique username
     await users_collection.create_index("username", unique=True)
 
@@ -88,4 +99,4 @@ async def init_db():
     await reports_collection.create_index([("created_at", 1)])
     await report_shares_collection.create_index([("shared_at", 1)])
 
-    print("✅ MongoDB connected successfully")
+    logger.info("✅ MongoDB connected and indexes initialized successfully")

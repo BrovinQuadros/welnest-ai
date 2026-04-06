@@ -1,3 +1,6 @@
+import logging
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -22,17 +25,29 @@ app = FastAPI(
     version="1.0.0"
 )
 
+logger = logging.getLogger(__name__)
+
 
 # -----------------------------
 # CORS CONFIGURATION
 # -----------------------------
+configured_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOW_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+default_origins = [
+    # Primary deployed frontend
+    "https://wellnest-ba120me9u-brovinquadros-projects.vercel.app",
+    "https://welnest-ai-five.vercel.app",
+]
+
+allow_origins = list(dict.fromkeys(default_origins + configured_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        # Primary deployed frontend
-        "https://wellnest-ba120me9u-brovinquadros-projects.vercel.app",
-        "https://welnest-ai-five.vercel.app",
-    ],
+    allow_origins=allow_origins,
     # Allow local Vite dev servers on any port and Vercel preview deployments.
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$|https://.*\.vercel\.app$",
     allow_credentials=True,
@@ -46,7 +61,11 @@ app.add_middleware(
 # -----------------------------
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
+    try:
+        await init_db()
+    except Exception:
+        logger.exception("Database initialization failed during startup")
+        raise
 
 
 # -----------------------------
@@ -69,3 +88,8 @@ async def root():
         "message": "WellNest AI Backend Running",
         "status": "ok"
     }
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
