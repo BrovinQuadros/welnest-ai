@@ -12,3 +12,4 @@ matplotlib
 pandas
 python-dotenv
 certifi
+resend

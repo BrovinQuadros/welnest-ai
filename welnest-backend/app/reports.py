@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from app.auth_dependencies import get_current_user
 from app.database import report_shares_collection
 from app.models import ShareReportRequest
+from app.services.email_service import send_email
 from app.services.report_generator import (
     generate_csv_report,
     generate_pdf_report,
@@ -78,20 +79,48 @@ async def share_wellness_report(
     try:
         report_path = await generate_pdf_report(current_user)
 
+        email_subject = f"WellNest Wellness Report - {current_user}"
+        email_text = (
+            f"Hello,\n\n"
+            f"{current_user} has shared their wellness report with you. "
+            f"Please find the attached PDF report.\n\n"
+            f"Sent via WellNest AI."
+        )
+        email_html = (
+            "<p>Hello,</p>"
+            f"<p><strong>{current_user}</strong> has shared their wellness report with you.</p>"
+            "<p>Please find the attached PDF report.</p>"
+            "<p>Sent via WellNest AI.</p>"
+        )
+
+        send_result = send_email(
+            to_email=provider_email,
+            subject=email_subject,
+            text_body=email_text,
+            html_body=email_html,
+            attachment_path=report_path,
+        )
+
         await report_shares_collection.insert_one(
             {
                 "username": current_user,
                 "provider_email": provider_email,
                 "report_file": report_path.name,
                 "shared_at": datetime.utcnow(),
-                "status": "simulated_sent",
+                "status": "sent",
+                "email_provider": send_result.get("provider"),
             }
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to share report for user '%s'", current_user)
-        raise HTTPException(status_code=500, detail="Failed to share report")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to share report: {str(exc)}",
+        )
 
     return {
         "message": "Report shared successfully",
         "provider_email": provider_email,
+        "status": "sent",
+        "delivery": send_result,
     }
